@@ -1,0 +1,6 @@
+# 依赖Catch2
+[submodule "3rdpart/Catch2"]
+    path = 3rdpart/Catch2  # Catch2在Project中的路径
+    url = https://github.com/catchorg/Catch2 # Catch git仓库url
+    branch = v2.x # Catch2分支
+    #ref = <提交ID或分支名称>
