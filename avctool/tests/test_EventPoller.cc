@@ -8,6 +8,7 @@
 using namespace avc::util;
 
 int main(int argc, char** argv) {
+  setThreadName("MainThread");
   //使用日志库打印标准输出
   Logger::instance().addLogChannel(LogChannel::Ptr(new LogChannelConsole()));
   Logger::instance().setWriter(LogWriter::Ptr(new AsyncLogWriter()));
@@ -19,8 +20,11 @@ int main(int argc, char** argv) {
           poller->runLoop();
       }
       
-      auto poller = EventPoller::create();
-      poller->runLoop();
+      auto poller3 = EventPoller::create();
+      poller3->runLoop();
+
+      auto poller2 = EventPoller::create();
+      poller2->runLoop();
       std::string input;
       do {
           std::cin >> input;
@@ -29,10 +33,16 @@ int main(int argc, char** argv) {
           else if (input == "send") {
           }
           else if (input == "shutdown") {
-              poller->shutdown();
+              poller2 = nullptr;
           }
           else if (input == "run") {
 
+          }
+          else if (input == "delay") {
+              poller2->addDelayTask(1000, []()->uint64_t {
+                  DebugL << "delayTask callback.";
+                  return 1000;
+               });
           }
       } while (input != "Q" && input != "q");
 

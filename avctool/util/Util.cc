@@ -3,10 +3,13 @@
 #include <chrono>
 #include <string>
 #include <sstream>
+#include <thread>
 
 #if defined(_MSC_VER)
 #include <Windows.h>
 #endif
+
+#include "log/Log.h"
 
 namespace avc {
 namespace util {
@@ -123,6 +126,14 @@ std::string getThreadName()
 }
 
 #if defined(_WIN32)
+
+void sleep(int second) {
+    Sleep(1000 * second);
+}
+void usleep(int micro_seconds) {
+    std::this_thread::sleep_for(std::chrono::microseconds(micro_seconds));
+}
+
 int gettimeofday(struct timeval *tm, void *ptz) {
     (void)ptz;
     //通过C++接口获取，自Epoch（1970-1-1 00:00:00 UTC) 以来的微秒数
@@ -185,6 +196,91 @@ std::string filename(const std::string & path) {
 
 #endif
 
+static inline uint64_t getCurrentMicrosecondOrigin() {
+#if defined(WIN32)
+    //win32平台，使用c++ chrono库获取
+    using namespace std::chrono;
+    return duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
+#else
+    //通过gettimeofday
+    struct timeval;
+    gettimeofday(&tv, nullptr);
+    return tv.tv_sec * 1000000L + tv.tv_usec;
+#endif
+}
+
+/**
+ * 程序启动时间： 毫秒级别与微秒级别
+*/
+static std::atomic<uint64_t> s_currentMillisecond(0);
+static std::atomic<uint64_t> s_currentMicrosecond(0);
+/**
+ * 当前系统时间：自Epoch以来的时间，单位毫秒与微秒
+*/
+static std::atomic<uint64_t> s_currentMillisecondSystem(getCurrentMicrosecondOrigin() / 1000L);
+static std::atomic<uint64_t> s_currentMicrosecondSystem(getCurrentMicrosecondOrigin());
+
+static bool initMillisecondThread() {
+    static std::thread s_thread([]()->void{
+        setThreadName("Stamp Thread");
+        DebugL << "Stamp Thread Started";
+
+        uint64_t last = getCurrentMicrosecondOrigin();
+        uint64_t now;
+        uint64_t microsecond = 0;
+        while (true) {
+            //获取当前系统时间
+            now = getCurrentMicrosecondOrigin();
+            /**
+             * release保证，写操作之后的读写操作，都不会重新排序到写操作之前
+            */
+            s_currentMicrosecondSystem.store(now, std::memory_order::memory_order_release);
+            s_currentMillisecondSystem.store(now / 1000L, std::memory_order::memory_order_release);
+
+            uint64_t elapse = now - last;
+            last = now;
+            if (elapse > 0 && elapse < 1000 * 1000) {
+                //获取系统时间计算时间间隔在0~1000ms之间，认为是正常的自增
+                microsecond += elapse;
+                s_currentMicrosecond.store(microsecond, std::memory_order::memory_order_release);
+                s_currentMillisecond.store(microsecond / 1000L, std::memory_order::memory_order_release);
+            }
+            else {
+                WarnL << "Stamp elapse is abnormal: " << elapse << "us";
+            }
+            //sleep 0.5 ms
+            usleep(500);
+        }
+    });
+
+    static OnceToken once([&]()->void{
+        s_thread.detach();
+    });
+    return true;
+}
+
+uint64_t getCurrentMillisecond(bool systemTime) {
+  /**
+   * 调用getCurrentMillisecond函数后，才会启动时间戳线程
+   * 因此如果getCurrentMillisecond函数未计时调用，则获取到的当前时间可能存在误差
+  */
+  static bool flag = initMillisecondThread();
+  if (systemTime) {
+      /**
+       * acquire保证，所有读操作之前的读写操作，都不会在读操作之后
+      */
+      return s_currentMillisecondSystem.load(std::memory_order::memory_order_acquire);
+  }
+  return s_currentMillisecond.load(std::memory_order::memory_order_acquire);
+}
+
+uint64_t getCurrentMicrosecond(bool systemTime) {
+    static bool flag = initMillisecondThread();
+    if (systemTime) {
+        return s_currentMicrosecondSystem.load(std::memory_order::memory_order_acquire);
+    }
+    return s_currentMicrosecond.load(std::memory_order::memory_order_acquire);
+}
 
 
 }

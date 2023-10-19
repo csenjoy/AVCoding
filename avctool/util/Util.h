@@ -39,12 +39,13 @@ void setThreadName(const char *name);
 std::string getThreadName();
 
 #if defined(_WIN32)
+void usleep(int micro_seconds);
+void sleep(int second);
 /**
  * Win32平台，没有提供gettimeofday函数
  * @brief ptz struct timezone
 */
 int gettimeofday(struct timeval* tm, void* ptz);
-
 /**
  * Win32平台，实现vasprintf
  *  动态方式申请格式化字符串的buffer,用户负责释放buf内存
@@ -59,6 +60,19 @@ std::string filename(const std::string& path);
 #endif//#if HAS_STRING_VIEW
 
 #endif //#if defined(_WIN32)
+
+/**
+ * @brief 获取Epoch(1970-01-01 00:00:00 UTC)至今的毫秒数
+ * @param systemTime 是否为系统时间；否则为程序启动时间
+ * 
+ *        通过启动一个线程方式，去更新当前系统时间和程序启动时间
+ *        系统时间伴随着用户修改系统本地时间而变化；而程序启动时间不随用户修改系统本地时间的变化而变化
+ *        因此可以认为：
+ *             系统时间（可回退）；程序启动时间（不可回退，一直递增）
+*/
+uint64_t getCurrentMillisecond(bool systemTime = false);
+uint64_t getCurrentMicrosecond(bool systemTime = false);
+
 
 #ifndef bzero
 #define bzero(ptr,size)  memset((ptr),0,(size));

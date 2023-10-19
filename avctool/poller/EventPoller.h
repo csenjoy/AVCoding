@@ -5,6 +5,7 @@
 #include <memory>
 #include <list>
 #include <unordered_map>
+#include <map>
 
 #include "thread/TaskExecutor.h"
 #include "poller/PipeWrapper.h"//使用PipeWrapper，支持写Pipe唤醒轮询函数（select或epoll_wait)
@@ -53,6 +54,14 @@ public:
     using OnEvent = std::function<void(int)>;
     using FD = int;
 
+    /**
+     * 毫秒级别定时器实现
+     * uint64_t回调函数返回延迟时间
+    */
+    using DelayTask = TaskCancelableImpl<uint64_t()>;
+    using OnDelay = std::function<uint64_t()>;
+
+
     AVC_STATIC_CREATOR(EventPoller)
 
     virtual ~EventPoller();
@@ -63,12 +72,12 @@ public:
      *                如果为false，则创建线程后，调用runLoop(true)
     */
     void runLoop(bool blocked = false);
-
+private:
     /**
      * 退出循环
     */
     void shutdown();
-
+public:
     /**
      * 注册网络I/O事件
     */
@@ -83,7 +92,12 @@ public:
      *          2）对于Linux平台，轮询函数使用文件描述符唤醒，因此使用管道即可
     */
     Task::Ptr async(TaskIn&& task, bool may_sync = true) override;
-    Task::Ptr async_first(TaskIn&& task, bool may_sync) override;
+    Task::Ptr async_first(TaskIn&& task, bool may_sync = true) override;
+
+    /**
+     * 添加延迟任务
+    */
+    DelayTask::Ptr addDelayTask(int delayMs, OnDelay &&onDelay); 
 private:
     EventPoller();
     /**
@@ -150,6 +164,7 @@ private:
 
     int attachEvent_l(int fd, EventRecord::Ptr eventRecord);
 private:
+    bool exit_ = false;
     Semphore sem_started_;
     std::shared_ptr<std::thread> thread_;
 
@@ -159,11 +174,18 @@ private:
     std::list<Task::Ptr> tasks_;
     MutexWrapper<std::mutex> tasks_mutex_;
 
+    /**
+     * 注册的网络I/O事件记录
+    */
     std::unordered_map<FD, EventRecord::Ptr> event_records_;
     MutexWrapper<std::mutex> event_records_mutex_;
     PipeWrapper pipe_;
 
-    bool exit_ = false;
+
+    /**
+     * 延迟任务
+    */
+    std::multimap<uint64_t, DelayTask::Ptr> delay_tasks_;
 
 #if HAS_EPOLL
     int epoll_fd_ = -1;

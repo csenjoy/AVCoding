@@ -21,6 +21,7 @@ EventPoller::~EventPoller() {
 
 void EventPoller::runLoop(bool blocked) {
     if (blocked) {
+        TraceL << "runLoop started blocked: " << blocked;
         while (!exit_) {
             /**
              * next下次轮询函数唤醒时间，单位毫秒
@@ -140,7 +141,10 @@ void EventPoller::runLoop(bool blocked) {
 */
 void EventPoller::shutdown() {
     async([this]()->void {
-        throw Exit();
+        if (!exit_) {
+            throw Exit();
+        }
+        TraceL << "EventPoller has alyready exited.";
     });
 
     if (thread_ && thread_->joinable()) {
@@ -148,7 +152,12 @@ void EventPoller::shutdown() {
         thread_ = nullptr;
     }
 
+    TraceL << "close pipe";
+    detachEvent(pipe_.readFD());
+    pipe_.closeFD();
+
 #if HAS_EPOLL
+    TraceL << "close epoll fd";
     epoll_close(epoll_fd_);
     epoll_fd_ = -1;
 #endif
@@ -267,6 +276,27 @@ EventPoller::Task::Ptr EventPoller::async_first(EventPoller::TaskIn&& task, bool
     return job;
 }
 
+EventPoller::DelayTask::Ptr EventPoller::addDelayTask(int delayMs, OnDelay &&onDelay) {
+    //创建延迟任务
+    auto delayTask = DelayTask::create(std::move(onDelay));
+    if (delayTask == nullptr) return delayTask;
+
+    //添加定时器这个时刻作为开始时间
+    auto deadline = getCurrentMillisecond() + delayMs;
+    /**
+     * 借助异步任务的两个作用： 
+     *      （1）唤醒轮询函数，因为没有延迟任务的时候是永久等待
+     *              异步任务执行完成后，轮询线程, 首先会调用延迟任务(scheduleDelayTask)
+     *       (2) 添加异步任务时，不需要加锁
+    */
+    async_first([deadline, delayTask, this]()->void {
+        delay_tasks_.emplace(deadline, delayTask);
+    });
+
+    //返回定时任务
+    return delayTask;
+}
+
 EventPoller::EventPoller() :tasks_mutex_(true), event_records_mutex_(false) {
 
 #if HAS_EPOLL
@@ -278,7 +308,6 @@ EventPoller::EventPoller() :tasks_mutex_(true), event_records_mutex_(false) {
     //设置close-on-exec标志
     SockUtil::setCloOnExec(epoll_fd_);
 #endif
-
     attachPipeEvent();
 }
 
@@ -295,9 +324,79 @@ bool EventPoller::currentThread() const {
 /**
  * 调度延迟任务
  * @return 返回最近定时器超时时间, 单位毫秒
+ *      （1）遍历延迟任务，如果超时则立即执行延迟回调
+ *              延迟任务需要重复，则插入延迟任务
+ *      （2）
 */
 int64_t EventPoller::scheduleDelayTask() {
-    return -1;
+    int64_t next = 0;
+    //return -1;
+    
+    /**
+     * 以当前时间节点计算延迟任务是否到期
+    */
+    auto currentMillisecond = getCurrentMillisecond();
+
+    //没有延迟任务
+    if (delay_tasks_.empty()) return 0;
+
+
+    decltype(delay_tasks_) delay_tasks_copy;
+    delay_tasks_copy.swap(delay_tasks_);
+
+    //multimap<uint64_t, XX>是按照, 延迟任务超时时间递增的
+    for (auto it = delay_tasks_copy.begin(); it != delay_tasks_copy.end() && it->first <= currentMillisecond; it = delay_tasks_copy.erase(it)) {
+        //此处说明，延迟任务到期了
+        if (it->second && (*(it->second))) {
+            auto delayMs = (*(it->second))();
+            if (delayMs > 0) {
+                //延迟任务，继续保持
+                delay_tasks_.emplace(currentMillisecond + delayMs, it->second);
+            }
+        }
+    }
+
+    //未执行完成的延迟任务
+    delay_tasks_.insert(delay_tasks_copy.begin(), delay_tasks_copy.end());
+
+    if (delay_tasks_.empty()) {
+        return 0;
+    }
+
+    return delay_tasks_.begin()->first - currentMillisecond;
+
+#if 0
+    /**
+     * 查找multimap中，第一个大于currentMillisecond的节点，因此
+     * [begin, node) 为过期的定时器。node节点是大于currentMillisecond的，因此一定是不包含进去
+     * 
+     * 注意函数lower_bound查找第一个不小于（大于等于）currentMillisecond的节点
+     * 因此node，作为结束区间，无法知晓是否包含进去
+    */
+    auto node = delay_tasks_.upper_bound(currentMillisecond);
+
+    //delay_tasks_.erase()
+
+    //计算下一次唤醒时间
+    if (node == delay_tasks_.end()) {
+        //没有延迟任务了： 延迟任务都到期或者本来就没有延迟任务
+        next = 0;
+    }
+    else {
+        //还存在延迟任务
+        next = node->first - currentMillisecond;
+    }
+    
+    //执行延迟任务
+    for (auto begin = delay_tasks_.begin(); begin != node; ++begin) {
+        //执行[begin, node)区间的所有到期任务
+   
+    }
+
+
+    //delay_tasks_.upper_bound()
+    return next;
+#endif
 }
 
 void EventPoller::onPipeEvent() {
@@ -359,6 +458,9 @@ void EventPoller::onPipeEvent() {
 }
 
 void EventPoller::attachPipeEvent() {
+    if (!pipe_.valid()) {
+        pipe_.reOpenFD();
+    }
     /**
      * 设置管道文件描述符的io属性
      * 此处管道文件描述符创建成功，否则早已经抛出异常了

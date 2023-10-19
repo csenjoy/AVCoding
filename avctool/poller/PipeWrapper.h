@@ -26,8 +26,11 @@ public:
      * 重新打开管道文件描述符
     */
     void reOpenFD();
-private:
     void closeFD();
+
+    bool valid() const {
+        return readFD() > 0 && writeFD() > 0;
+    }
 private:
     /**
      * 管道读/写：fd[0]/fd[1]

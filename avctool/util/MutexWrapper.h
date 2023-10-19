@@ -14,7 +14,7 @@ class MutexWrapper {
 public:
     using mutex_type = typename _Mtx;
 
-    MutexWrapper(bool enable) : enable_(enable) {}
+    MutexWrapper(bool enable = true) : enable_(enable) {}
 
     inline void lock() {
         if (enable_) {
