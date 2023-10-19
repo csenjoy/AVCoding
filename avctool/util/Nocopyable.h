@@ -8,6 +8,7 @@ class Nocopyable {
 public:
     Nocopyable() {}
     ~Nocopyable() {}
+protected:
     //禁止拷贝构造
     Nocopyable(const Nocopyable &) = delete;
     Nocopyable &operator=(const Nocopyable &) = delete;

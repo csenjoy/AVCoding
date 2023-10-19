@@ -7,7 +7,6 @@
 namespace avc {
 namespace util {
 
-
 /**
  * 信号量语义： 当信号量为0时，需要等待。
  *             不为0时，信号量减一，且不需要等待

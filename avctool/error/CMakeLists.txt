@@ -17,4 +17,4 @@ target_include_directories(
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../
 )
 
-add_subdirectory(test)
+source_group("" FILES ${ERRNO_HEADERS} ${ERRNO_SOURCES})

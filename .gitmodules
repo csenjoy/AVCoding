@@ -4,3 +4,7 @@
 	url = https://github.com/catchorg/Catch2
 	branch = v2.x
     #ref = <提交ID或分支名称>
+[submodule "wepool"]
+	path = 3rdpart/wepoll
+	url = https://github.com/piscisaureus/wepoll.git
+	branch = dist

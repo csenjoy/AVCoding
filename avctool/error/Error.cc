@@ -155,7 +155,7 @@ std::string AvcCplxError::summary() {
         int loop = 0;
         while(next) {
             for (int tab = 0; tab < loop; ++tab) {
-                oss << "\t";
+                oss << "    ";
             }
 
             oss << "[" << filename(next->file_) << " " << next->func_ << ":" << next->line_ << "]: " << next->message_ << std::endl;

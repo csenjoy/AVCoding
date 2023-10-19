@@ -56,6 +56,7 @@ struct LogContext : public std::ostringstream
 
     template<typename ...ARGS>
     static Ptr create(ARGS&& ...args) {
+      //对每个arg参数进行std::forward展开
       return std::make_shared<LogContext>(std::forward<ARGS>(args)...);
     }
 
@@ -158,7 +159,7 @@ public:
 */
 class LogChannelFile : public LogChannel {
 
-};
+};//class LogChannelFile
 
 /**
  * Logger设计成全局静态变量
@@ -230,6 +231,8 @@ private:
             decltype(pendding_) tmp;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
+                if (pendding_.empty()) continue;
+
                 pendding_.swap(tmp);
             }
 
@@ -325,6 +328,8 @@ struct LogContextCaptureWrapper {
 #define WriteL(level) avc::util::LogContextCapture(avc::util::Logger::instance(), (level), __FILE__, __FUNCTION__, __LINE__)
 #define TraceL WriteL(avc::util::LogLevel::kLogLevelTrace)
 #define DebugL WriteL(avc::util::LogLevel::kLogLevelDebug)
+#define InfoL  WriteL(avc::util::LogLevel::kLogLevelInfo)
+#define WarnL  WriteL(avc::util::LogLevel::kLogLevelWarn)
 /**
  * C格式化日志输入形式
 */

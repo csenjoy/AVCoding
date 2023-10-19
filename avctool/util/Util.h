@@ -6,9 +6,10 @@
 
 #include <mutex>
 #include <functional>
+#include <sstream>
 
 //#if __cplusplus > 201703
-#define HAS_STRING_VIEW 1
+#define HAS_STRING_VIEW 0
 //#endif
 
 #if HAS_STRING_VIEW
@@ -21,6 +22,9 @@
 
 #include "util/Semphore.h"
 #include "util/Nocopyable.h"
+#include "util/MutexWrapper.h"
+#include "util/OnceToken.h"
+#include "util/StrPrinter.h"
 
 namespace avc {
 namespace util {
@@ -52,61 +56,13 @@ int asprintf(char **buf, const char *fmt, ...);
 std::string filename(std::string_view path);
 #else
 std::string filename(const std::string& path);
-#endif
+#endif//#if HAS_STRING_VIEW
 
-#endif
+#endif //#if defined(_WIN32)
 
-/**
- * 模板类MutexWrapper，实现无锁Mutex
-*/
-template<class _Mtx = std::recursive_mutex>
-class MutexWrapper {
-public:
-    MutexWrapper(bool enable) : enable_(enable) {}
-
-    inline void lock() {
-        if (enable_) {
-            mutex_.lock();
-        }
-    }
-
-    inline void unlock() {
-        if (enable_) {
-            mutex_.unlock();
-        }
-    }
-private:
-    _Mtx mutex_;
-    bool enable_;
-};//class MutexWrapper
-
-/**
- * 通过RAII，调用onConstructed与onDestructed
-*/
-class OnceToken {
-public:
-    using Task = std::function<void()>;
-    template<class FUNC>
-    OnceToken(const FUNC &onConstructed, Task onDestructed = nullptr) {
-        onConstructed();
-        onDestructed_ = std::move(onDestructed);
-    }
-
-    /**
-     * 模板特化：构造时不需要调用处理函数，析构时可选传递函数对象
-    */
-    OnceToken(std::nullptr_t, Task onDestructed = nullptr) {
-        onDestructed_ = std::move(onDestructed);
-    }
-
-    ~OnceToken() {
-        if (onDestructed_) {
-            onDestructed_();
-        }
-    }
-private:
-    Task onDestructed_;
-};//class OnceToken
+#ifndef bzero
+#define bzero(ptr,size)  memset((ptr),0,(size));
+#endif //bzero
 
 }
 }
@@ -119,7 +75,11 @@ private:
 #define avc_free(p) if ((p)) delete(p)
 #define avc_free_safe(p) if (*(p)) { delete(*(p)); *(p) = nullptr; }
 //#define avc_free_array(p) if ((p)) delete [] (p)
-
 #define avc_array_size(array) (size_t)(sizeof((array)) / sizeof((array)[0]))
+
+#define AVC_STATIC_CREATOR(ClassType) template<class ...ARGS> \
+                               static ClassType::Ptr create(ARGS &&...args) { \
+                                    return ClassType::Ptr(new ClassType(std::forward<ARGS>(args)...)); \
+                               }
 
 #endif
