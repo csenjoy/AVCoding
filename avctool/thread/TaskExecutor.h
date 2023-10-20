@@ -4,6 +4,7 @@
 #include <functional>
 
 #include "thread/TaskCancelable.h"
+#include "thread/ThreadLoadCounter.h"//提供线程负载计算
 #include "util/Semphore.h"
 #include "util/OnceToken.h"
 
@@ -68,7 +69,12 @@ public:
     }
 };//class TaskExecutorInterface
 
-class TaskExecutor : public TaskExecutorInterface {
+/**
+ * 任务执行器：
+ *    任务执行器接口： 提供异步任务投递，以及同步执行任务
+ *    线程负载计算：任务执行器需要统计自己的负载
+*/
+class TaskExecutor : public TaskExecutorInterface, public ThreadLoadCounter {
 public:
     using Ptr = std::shared_ptr<TaskExecutor>;
 

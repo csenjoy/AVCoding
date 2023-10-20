@@ -26,6 +26,8 @@ public:
         PRIORITY_HIGHEST
     };//enum Priority
 
+    static bool setThreadPriority(int priority) { return false; }
+
     using Ptr = std::shared_ptr<ThreadPool>;
     using OnCallback = std::function<void(int)>;
 
@@ -107,7 +109,18 @@ private:
         if (onStart_) onStart_(index);
 
         while (!exit_) {
+            /**
+             * 线程池无需，记录线程负载
+             *      (1) 线程负载时某个线程的属性，而不是线程池的属性
+             *     （2）信号量post时，应该会负载均衡的唤醒等待线程？？？（避免某个线程一直BUSY)
+             *     （3）线程池不需要负载均衡：
+             *            单个任务来临时，一直是某个线程处理，不存在负载均衡
+             *            多个任务来临时，idle的线程会获取某个任务执行，也不存在负载均衡
+             *            线程池的模型：多个线程等待获取任务处理，不存在负载均衡的问题
+            */
+            //onSleep();
             sem_.wait();
+            //onWakeup();
 
             Task::Ptr job;
             {

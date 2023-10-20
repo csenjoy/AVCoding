@@ -21,7 +21,9 @@ EventPoller::~EventPoller() {
 
 void EventPoller::runLoop(bool blocked) {
     if (blocked) {
+#if 0
         TraceL << "runLoop started blocked: " << blocked;
+#endif
         while (!exit_) {
             /**
              * next下次轮询函数唤醒时间，单位毫秒
@@ -33,7 +35,15 @@ void EventPoller::runLoop(bool blocked) {
             std::list<EventRecord::Ptr> signaledEventRecords;
 #if HAS_EPOLL
             struct epoll_event signaled_events[EPOLL_SIZE];
-            int n = epoll_wait(epoll_fd_, signaled_events, EPOLL_SIZE, next > 0 ? next : -1); 
+            /**
+             * 进入休眠前，记录下时间
+            */
+            onSleep();
+            int n = epoll_wait(epoll_fd_, signaled_events, EPOLL_SIZE, next > 0 ? next : -1);
+            /**
+             * 从休眠中唤醒，也需要记录下时间
+            */
+            onWakeup();
             if (n > 0) {
                 for (int index = 0; index < n; ++index) {
                     EventRecord::Ptr signaledEventRecord;
@@ -127,8 +137,9 @@ void EventPoller::runLoop(bool blocked) {
     else {
         exit_ = false;
         thread_ = std::make_shared<std::thread>([this]()->void {
+#if 0
             setThreadName((StrPrinter << "EventPoller#" << this).c_str());
-
+#endif
             sem_started_.post();
             runLoop(true);
         });

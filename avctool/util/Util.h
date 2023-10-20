@@ -38,6 +38,8 @@ void setThreadName(const char *name);
 */
 std::string getThreadName();
 
+void setThreadAffinity(int index);
+
 #if defined(_WIN32)
 void usleep(int micro_seconds);
 void sleep(int second);

@@ -15,6 +15,7 @@ foreach(test ${AVCTOOL_TESTS})
         PRIVATE avctool::util
                 avctool::log
                 avctool::error
+                avctool::thread
                 avctool::network
                 avctool::poller
     )

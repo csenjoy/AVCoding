@@ -14,7 +14,7 @@
 
 #include "log/Log.h"
 
-#define HAS_EPOLL  0
+#define HAS_EPOLL  1
 
 
 #if HAS_EPOLL
@@ -190,6 +190,7 @@ private:
 #if HAS_EPOLL
     int epoll_fd_ = -1;
 #endif
+    
 };//class EventPoller
 
 }//namespace util
