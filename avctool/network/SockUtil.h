@@ -2,6 +2,7 @@
 #define NETWORK_SOCKUTIL_H
 
 #include <stdint.h>
+#include <string>
 
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -30,6 +31,8 @@ int ioctl(int fd, long cmd, u_long *ptr);
 int close(int fd);
 #endif // defined(_WIN32)
 
+#define SOCKET_DEFAULT_BUF_SIZE (256 * 1024)
+
 struct SockUtil {
 
 static bool support_ipv6();
@@ -41,6 +44,13 @@ static bool support_ipv6();
  * @backLog 未accept的套接字数量
 */
 static int listen(uint16_t port, const char* localIp, int backLog = 1024);
+
+/**
+ * 绑定udp socket
+ * @return 返回socket fd
+*/
+static int bindUdpSocket(uint16_t port, const char *localIp, bool reuseAddr = true);
+
 /**
  * @param host服务器ip或域名
 */
@@ -48,6 +58,15 @@ static int connect(const char *host, uint16_t port, bool async = true, uint16_t 
 static int accept(int fd, struct sockaddr *addr, socklen_t *addr_len);
 static int setNoDelay(int fd, bool on = true);
 static int setNoBlocked(int fd, bool on = true);
+static int setReuseable(int fd, bool on = true, bool reusePort = true);
+static int setRecvBuffer(int fd, int size = SOCKET_DEFAULT_BUF_SIZE);
+static int setSendBuffer(int fd, int size = SOCKET_DEFAULT_BUF_SIZE);
+
+/**
+ * 开启SO_LINGER特性
+ * @param second 内核等待关闭socket超时时间
+*/
+static int setCloseWait(int fd, int second = 0);
 /**
  * UNIX系统中子进程继承父进程的文件描述符，
  *      当文件描述符设置成Close-on-exec时，子进程会关闭对应文件描述符
@@ -58,6 +77,9 @@ static bool isIpv4(const char *ip);
 
 static uint16_t get_local_port(int fd);
 static uint16_t get_peer_port(int fd);
+static socklen_t get_sockaddr_len(struct sockaddr *addr);
+static std::string get_sockaddr_ip(struct sockaddr* addr);
+static uint16_t get_sockaddr_port(struct sockaddr* addr);
 
 /**
  * 处理sockaddr相关

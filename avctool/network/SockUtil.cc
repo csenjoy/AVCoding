@@ -192,6 +192,33 @@ int SockUtil::listen(uint16_t port, const char *localIp, int backLog) {
     return listenFd;
 }
 
+int SockUtil::bindUdpSocket(uint16_t port, const char *localIp, bool reuseAddr) {
+    int fd = -1;
+
+    //创建udp socket
+    int family = support_ipv6() ? (isIpv4(localIp) ? AF_INET : AF_INET6) : AF_INET;
+    fd = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
+    if (fd == -1) {
+        WarnL << "Failed to create socket" << get_uv_errmsg();
+        return -1;
+    }
+
+    //设置i/o属性
+    if (reuseAddr) {
+        setReuseable(fd);
+    }
+    setNoBlocked(fd);//设置非阻塞
+    
+    //绑定本地地址
+    if (-1 == bindSocket(fd, port, localIp, family)) {
+        WarnL << "Failed to bind socket: " << get_uv_errmsg();
+        CLOSE_FD(fd);
+        return -1;
+    }
+
+    return fd;
+}
+
 int SockUtil::connect(const char *host, uint16_t port, bool async, uint16_t localPort, const char *localIp) {
     //获取socket地址
     struct sockaddr_storage addr;
@@ -245,7 +272,12 @@ int SockUtil::accept(int fd, sockaddr *addr, socklen_t *addr_len) {
 }
 
 int SockUtil::setNoDelay(int fd, bool on) {
-    return -1;
+    int opt = on ? 1 : 0;
+    int ret = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&opt, static_cast<socklen_t>(sizeof(opt)));
+    if (ret == -1) {
+        TraceL << "setsockopt TCP_NODELAY failed";
+    }
+    return ret;
 }
 
 int SockUtil::setNoBlocked(int fd, bool on){
@@ -261,8 +293,52 @@ int SockUtil::setNoBlocked(int fd, bool on){
     return ret;
 }
 
-int SockUtil::setCloOnExec(int fd, bool on)
-{
+int SockUtil::setReuseable(int fd, bool on, bool reusePort) {
+    int opt = on ? 1 : 0;
+    int ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, static_cast<socklen_t>(sizeof(opt)));
+    if (ret == -1) {
+        TraceL << "setsockopt SO_REUSEADDR failed";
+        return ret;
+    }
+#if defined(SO_REUSEPORT)
+    ret = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (char *)&opt, static_cast<socklen_t>(sizeof(opt)));
+    if (ret == -1) {
+        TraceL << "setsockopt SO_REUSEPORT failed";
+    }
+#endif
+    return ret;
+}
+
+int SockUtil::setRecvBuffer(int fd, int size) {
+    int ret = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char*)&size, sizeof(size));
+    if (ret == -1) {
+        TraceL << "setsockopt SO_RCVBUF failed";
+    }
+    return ret;
+}
+
+int SockUtil::setSendBuffer(int fd, int size) {
+    int ret = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&size, sizeof(size));
+    if (ret == -1) {
+        TraceL << "setsockopt SO_SNDBUF failed";
+    }
+    return ret;
+}
+
+int SockUtil::setCloseWait(int fd, int second) {
+    struct linger slinger;
+    //在调用closesocket()时还有数据未发送完，允许等待
+    // 若m_sLinger.l_onoff=0;则调用closesocket()后强制关闭
+    slinger.l_linger = second;
+    slinger.l_onoff = second > 0;
+    int ret = setsockopt(fd, SOL_SOCKET, SO_LINGER, (char*)&slinger, sizeof(struct linger));
+    if (ret == -1) {
+        TraceL << "setsockopt SO_LINGER failed";
+    }
+    return ret;
+}
+
+int SockUtil::setCloOnExec(int fd, bool on) {
     return 0;
 }
 
@@ -297,6 +373,39 @@ uint16_t SockUtil::get_local_port(int fd)
 
 uint16_t SockUtil::get_peer_port(int fd) {
     return get_socket_port(fd, getpeername);
+}
+
+socklen_t SockUtil::get_sockaddr_len(struct sockaddr* addr) {
+    switch (addr->sa_family)
+    {
+    case AF_INET:
+        return sizeof(struct sockaddr_in);
+    case AF_INET6:
+        return sizeof(struct sockaddr_in6);
+    default:
+        break;
+    }
+    return 0;
+}
+
+std::string SockUtil::get_sockaddr_ip(struct sockaddr* addr) {
+    std::string ip;
+    switch (addr->sa_family)
+    {
+    case AF_INET:
+        ip = inet_ntoa(((struct sockaddr_in*)addr)->sin_addr);
+        break;
+    case AF_INET6:
+       //ip = inet_ntoa(((struct sockaddr_in6*)addr)->sin6_addr);
+        break;
+    default:
+        break;
+    }
+    return std::move(ip);
+}
+ 
+uint16_t SockUtil::get_sockaddr_port(struct sockaddr* addr) {
+    return inet_port(addr);
 }
 
 struct sockaddr_storage SockUtil::makeSockAddr(const char *ip, uint16_t port) {

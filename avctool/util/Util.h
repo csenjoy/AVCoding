@@ -26,6 +26,17 @@
 #include "util/OnceToken.h"
 #include "util/StrPrinter.h"
 
+/**
+ * 使用ssize_t类型
+*/
+#ifndef ssize_t
+#ifdef _WIN64
+#define ssize_t int64_t
+#else
+#define ssize_t int32_t
+#endif
+#endif
+
 namespace avc {
 namespace util {
 

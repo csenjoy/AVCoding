@@ -18,5 +18,6 @@ foreach(test ${AVCTOOL_TESTS})
                 avctool::thread
                 avctool::network
                 avctool::poller
+                avctool::timer
     )
 endforeach(test ${AVCTOOL_TESTS})

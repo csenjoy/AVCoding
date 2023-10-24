@@ -18,6 +18,7 @@ public:
     virtual TaskExecutor::Ptr getTaskExecutor();
     virtual int getTaskExecutorCount() const;
 protected:
+    size_t pos_ = 0;
     std::vector<TaskExecutor::Ptr> task_executors_;
 };//class TaskExcutorGetter
 
