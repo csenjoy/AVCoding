@@ -102,10 +102,14 @@ private:
 /////////////////////////////////////////////////////////////////////////////
 
 /// <summary>
-/// 
+/// 通过iovec接口发送多个内存块
 /// </summary>
 class BufferSendMsg : public BufferList {
 public:
+    /**
+     * 考虑到不同平台的合并写操作不同
+    */
+
     AVC_STATIC_CREATOR(BufferSendMsg)
 
     ~BufferSendMsg() {}
@@ -114,13 +118,51 @@ public:
         return 0;
     }
     bool empty() const override {
-        return false;
+        return remain_size_ == 0;
     }
+
     int send(int fd, int flags) override {
-        return -1;
+        int n = 0;
+#if defined(WIN32)
+        do {
+            DWORD sent = 0;
+            n = WSASend(fd, &iovec_[0], iovec_.size(), (LPDWORD)&sent, flags, 0, 0);
+            if (n == SOCKET_ERROR) {
+                //发送失败
+                return -1;
+            }
+            n = sent;
+            //出错是因为UV_ECANELED，则重新发送
+        } while(n < 0 && UV_ECANCELED == get_uv_error());
+
+
+#endif    
     }
 private:
-    BufferSendMsg(std::list<std::pair<Buffer::Ptr, bool>>&& data, SendResult sendResult) {}
+    BufferSendMsg(std::list<std::pair<Buffer::Ptr, bool>>&& data, SendResult sendResult) 
+        : data_(std::move(data)), iovec_(data.size()) {
+        size_t index = 0;
+#if defined(WIN32)
+        /**
+         * 初始化iovec结构
+        */
+        for (auto &data : data_) {
+            iovec_[index].buf = data.first->data();
+            iovec_[index].len = data.first->size();
+            remain_size_ += data.first->size();
+        }
+#endif
+    }
+private:
+    std::list<std::pair<Buffer::Ptr, bool>> data_;
+#if defined(WIN32)
+    /**
+     * Win32使用WSASend合并发送多个Buffer
+    */
+    std::vector<WSABUF> iovec_;
+    size_t remain_size_  = 0;
+#endif
+
 };//class BufferSendMsg 
 ////////////////////////////////////////////////////////////////////////////////////
 

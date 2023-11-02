@@ -15,6 +15,8 @@
 namespace avc {
 namespace util {
 
+#define SOCKET_DEFAULT_BUF_SIZE (256 * 1024)
+
 EventPoller::~EventPoller() {
     shutdown();
 }
@@ -306,6 +308,16 @@ EventPoller::DelayTask::Ptr EventPoller::addDelayTask(int delayMs, OnDelay &&onD
 
     //返回定时任务
     return delayTask;
+}
+
+
+BufferRaw::Ptr EventPoller::getSharedBuffer() {
+    auto ret = shared_buffer_.lock();
+    if (!ret) {
+        ret = BufferRaw::create(1 + SOCKET_DEFAULT_BUF_SIZE);
+        shared_buffer_ = ret;
+    }
+    return ret;
 }
 
 EventPoller::EventPoller() :tasks_mutex_(true), event_records_mutex_(false) {

@@ -10,10 +10,10 @@ namespace avc {
 namespace util {
 
 /**
- * ÆäËûis_pointerÄ£°åÀàÓëÌØ»¯£¬´¦ÀíÖÇÄÜÖ¸ÕëÀàĞÍÓëÖ¸ÕëÀàĞÍ
+ * å…¶ä»–is_pointeræ¨¡æ¿ç±»ä¸ç‰¹åŒ–ï¼Œå¤„ç†æ™ºèƒ½æŒ‡é’ˆç±»å‹ä¸æŒ‡é’ˆç±»å‹
 */
 /**
- * Ä¬ÈÏÇé¿ö²»ÊôÓÚÖ¸ÕëÀàĞÍ
+ * é»˜è®¤æƒ…å†µä¸å±äºæŒ‡é’ˆç±»å‹
 */
 template<class T>
 struct is_pointer : public std::false_type {};
@@ -59,16 +59,16 @@ public:
 
     inline void assign(const char* buffer, size_t size) {
         /**
-         * È·¶¨bufferµÄ´óĞ¡£¬Èç¹ûÃ»ÓĞÖ¸¶¨µÄ»°
+         * ç¡®å®šbufferçš„å¤§å°ï¼Œå¦‚æœæ²¡æœ‰æŒ‡å®šçš„è¯
         */
         if (size <= 0) {
             size = strlen(buffer);
         }
-        //´´½¨ÄÚ´æcapacityÊ±£¬±Èsize´óÓÚ1£¬·½±ãĞ´Èë'\0'
+        //åˆ›å»ºå†…å­˜capacityæ—¶ï¼Œæ¯”sizeå¤§äº1ï¼Œæ–¹ä¾¿å†™å…¥'\0'
         setCapacity(size + 1);
 
         /**
-         * ¿½±´bufferÄÚÈİ
+         * æ‹·è´bufferå†…å®¹
         */
         memcpy(data_, buffer, size);
         data_[size] = '\0';
@@ -79,24 +79,24 @@ public:
         if (data_) {
             do {
                 if (capacity > capacity_) {
-                    //ÒÑ´æÔÚµÄÄÚ´æ²»¹»ÓÃ£¬ÔòÖØĞÂ·ÖÅäÄÚ´æ
+                    //å·²å­˜åœ¨çš„å†…å­˜ä¸å¤Ÿç”¨ï¼Œåˆ™é‡æ–°åˆ†é…å†…å­˜
                     break;
                 }
 
-                //ÄÚ´æ×ã¹»ÓÃ
-                //ÅĞ¶ÏÄÚ´æÔÚ2kÒÔÏÂ£¬ÔòÖ±½Ó¸´ÓÃ
+                //å†…å­˜è¶³å¤Ÿç”¨
+                //åˆ¤æ–­å†…å­˜åœ¨2kä»¥ä¸‹ï¼Œåˆ™ç›´æ¥å¤ç”¨
                 if (capacity_ < 2 * 1024) {
                     return;
                 }
 
-                //ÇëÇóµÄÄÚ´æ´óÓÚÒÑ´æÔÚÄÚ´æµÄÒ»°ë£¬Ò²¸´ÓÃÄÚ´æ
+                //è¯·æ±‚çš„å†…å­˜å¤§äºå·²å­˜åœ¨å†…å­˜çš„ä¸€åŠï¼Œä¹Ÿå¤ç”¨å†…å­˜
                 if (2 * capacity > capacity_) {
                     return;
                 }
-                //ÆäËûÇé¿ö£¬ÊÍ·ÅÄÚ´æÖØĞÂ·ÖÅä
+                //å…¶ä»–æƒ…å†µï¼Œé‡Šæ”¾å†…å­˜é‡æ–°åˆ†é…
             } while (false);
 
-            //ÊÍ·ÅÄÚ´æ
+            //é‡Šæ”¾å†…å­˜
             delete[]data_;
             capacity_ = 0;
         }
@@ -112,13 +112,13 @@ public:
     }
 private:
     /**
-     * ¿½±´ÄÚ´æ¿édataµÄÄÚÈİ
+     * æ‹·è´å†…å­˜å—dataçš„å†…å®¹
     */
     BufferRaw(const char *data, size_t size = 0) {
         assign(data, size);
     }
     /**
-     * ÉêÇëÄÚ´æ¿é£¬´óĞ¡Îªcapacity£¬ÄÚÈİÎ´¶¨Òå
+     * ç”³è¯·å†…å­˜å—ï¼Œå¤§å°ä¸ºcapacityï¼Œå†…å®¹æœªå®šä¹‰
     */
     BufferRaw(size_t capacity = 0) {
         //resize(capacity);
@@ -147,8 +147,8 @@ public:
     }
 private:
     /**
-     *  Í¨¹ıÒ»¸öÄÚ´æ¿é¹¹ÔìBufferOffset£¬¿ÉÒÔÍ¨¹ıoffsetÓësize²ÎÊıÃèÊö
-     *  Êµ¼ÊÊ¹ÓÃÄÚ´æ¿é£¬Ä¬ÈÏÇé¿öÏÂ£¬Êµ¼ÊÊ¹ÓÃÄÚ´æ¿éÊÇÕû¸öÄÚ´æ¿é
+     *  é€šè¿‡ä¸€ä¸ªå†…å­˜å—æ„é€ BufferOffsetï¼Œå¯ä»¥é€šè¿‡offsetä¸sizeå‚æ•°æè¿°
+     *  å®é™…ä½¿ç”¨å†…å­˜å—ï¼Œé»˜è®¤æƒ…å†µä¸‹ï¼Œå®é™…ä½¿ç”¨å†…å­˜å—æ˜¯æ•´ä¸ªå†…å­˜å—
      * 
     */
     BufferOffset(C&& data, size_t size = 0, size_t offset = 0)
@@ -158,7 +158,7 @@ private:
 
     void setup(size_t size, size_t offset) {
         /**
-        * ÄÚ´æ¿é×Ü´óĞ¡, Í¨¹ıoffsetÓësize·ÃÎÊ´ËÄÚ´æ¿é
+        * å†…å­˜å—æ€»å¤§å°, é€šè¿‡offsetä¸sizeè®¿é—®æ­¤å†…å­˜å—
         */
         auto max_size = getPointer<C>(data_)->size();
         if (offset + size >= max_size) {
@@ -166,7 +166,7 @@ private:
         }
 
         if (!size) {
-            //Èç¹ûÃ»ÓĞÖ¸¶¨size£¬×Ô¶¯¼ÆËãsize
+            //å¦‚æœæ²¡æœ‰æŒ‡å®šsizeï¼Œè‡ªåŠ¨è®¡ç®—size
             size = max_size - offset;
         }
         size_ = size;
@@ -174,9 +174,9 @@ private:
     }
 
     /**
-     * »ñÈ¡Ö¸ÕëÀàĞÍÈİÆ÷µÄµØÖ·
-     *      ÒòÎªÎŞ·¨Çø±ğÈİÆ÷CµÄÀàĞÍÊÇÖ¸Õë»¹ÊÇÆäËûÆÕÍ¨ÀàĞÍ£¨Èçstd::string)
-     *      Òò´ËÔö¼ÓgetPointerº¯Êı£¬·µ»ØÈİÆ÷µÄµØÖ·£¬Í³Ò»·ÃÎÊÈİÆ÷
+     * è·å–æŒ‡é’ˆç±»å‹å®¹å™¨çš„åœ°å€
+     *      å› ä¸ºæ— æ³•åŒºåˆ«å®¹å™¨Cçš„ç±»å‹æ˜¯æŒ‡é’ˆè¿˜æ˜¯å…¶ä»–æ™®é€šç±»å‹ï¼ˆå¦‚std::string)
+     *      å› æ­¤å¢åŠ getPointerå‡½æ•°ï¼Œè¿”å›å®¹å™¨çš„åœ°å€ï¼Œç»Ÿä¸€è®¿é—®å®¹å™¨
     */
     template<class T>
     static typename std::enable_if<is_pointer<T>::value, const T &>::type
@@ -185,7 +185,7 @@ private:
     }
 
     /**
-     * »ñÈ¡·ÇÖ¸ÕëÀàĞÍÈİÆ÷µÄµØÖ·
+     * è·å–éæŒ‡é’ˆç±»å‹å®¹å™¨çš„åœ°å€
     */
     template<class T>
     static typename std::enable_if<!is_pointer<T>::value, const T*>::type
@@ -194,17 +194,17 @@ private:
     }
 private:
     /**
-     * CµÄÀàĞÍ¿ÉÄÜÊÇÆÕÍ¨ÀàĞÍ£¬ÀıÈç£ºstd::string
-     *  Ò²ÓĞ¿ÉÄÜÊÇÖÇÄÜÖ¸Õë£¬ÀıÈç£ºstd::shared_ptr
+     * Cçš„ç±»å‹å¯èƒ½æ˜¯æ™®é€šç±»å‹ï¼Œä¾‹å¦‚ï¼šstd::string
+     *  ä¹Ÿæœ‰å¯èƒ½æ˜¯æ™ºèƒ½æŒ‡é’ˆï¼Œä¾‹å¦‚ï¼šstd::shared_ptr
     */
     C data_;
     /**
-     * Êµ¼ÊÊ¹ÓÃµÄÄÚ´æ´óĞ¡
+     * å®é™…ä½¿ç”¨çš„å†…å­˜å¤§å°
     */
     size_t size_ = 0;
     /**
-     * ÄÚ´æ¿éÉÏµÄÆ«ÒÆ£¬»ñÈ¡Êµ¼ÊÊ¹ÓÃµÄÄÚ´æÊÇ´Ódata + offset¿ªÊ¼
-     * ´óĞ¡Îªsize
+     * å†…å­˜å—ä¸Šçš„åç§»ï¼Œè·å–å®é™…ä½¿ç”¨çš„å†…å­˜æ˜¯ä»data + offsetå¼€å§‹
+     * å¤§å°ä¸ºsize
     */
     size_t offset_ = 0;
 };//class BufferOffset

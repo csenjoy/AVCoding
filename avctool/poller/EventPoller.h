@@ -11,6 +11,7 @@
 #include "poller/PipeWrapper.h"//使用PipeWrapper，支持写Pipe唤醒轮询函数（select或epoll_wait)
 #include "util/MutexWrapper.h"
 #include "util/Nocopyable.h"
+#include "network/Buffer.h"
 
 #include "log/Log.h"
 
@@ -98,6 +99,8 @@ public:
      * 添加延迟任务
     */
     DelayTask::Ptr addDelayTask(int delayMs, OnDelay &&onDelay); 
+
+    BufferRaw::Ptr getSharedBuffer();
 private:
     EventPoller();
     /**
@@ -186,11 +189,10 @@ private:
      * 延迟任务
     */
     std::multimap<uint64_t, DelayTask::Ptr> delay_tasks_;
-
 #if HAS_EPOLL
     int epoll_fd_ = -1;
 #endif
-    
+    std::weak_ptr<BufferRaw> shared_buffer_;
 };//class EventPoller
 
 }//namespace util

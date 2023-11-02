@@ -1,5 +1,7 @@
 #include "Socket.h"
 
+#include <assert.h>
+
 #include "network/SockUtil.h"
 #include "error/uv_errno.h"
 
@@ -15,7 +17,7 @@ void Socket::setOnRead(OnRead &&cb) {
         cb = [this](Buffer::Ptr buffer, struct sockaddr *, socklen_t)->void {};
     }
 
-    LOCK_GUARD(mtx_fd_);
+    LOCK_GUARD(mtx_event_);
     on_read_ = std::move(cb);
 }
 
@@ -160,7 +162,7 @@ int Socket::flushData(int fd, int type, bool isEventPollerThread) {
                  *      （1）如果用户调用的flushData函数，没有必要移除写事件,
                  *           因此如果存在写事件的话，下次触发写事件的时候，就会移除写事件
                 */
-                stopWritableEvent();
+                stopWritableEvent(fd);
                 /**
                  * 
                 */
@@ -192,8 +194,7 @@ int Socket::flushData(int fd, int type, bool isEventPollerThread) {
                  * 不是EventPoller线程触发时，添加可写事件
                  * 如果是EventPoller线程触发，说明已经存在可写事件，并不需要添加
                 */
-
-                startWritableEvent();
+                startWritableEvent(fd);
             }
             break;
         }
@@ -206,7 +207,7 @@ int Socket::flushData(int fd, int type, bool isEventPollerThread) {
                  * 不是EventPoller线程触发时，添加可写事件
                  * 如果是EventPoller线程触发，说明已经存在可写事件，并不需要添加
                 */
-                startWritableEvent();
+                startWritableEvent(fd);
                 break;
             }
         }
@@ -218,6 +219,33 @@ int Socket::flushData(int fd, int type, bool isEventPollerThread) {
     if (!send_buffer_sending_tmp.empty()) {
         //未发送完成数据，添加到二级缓存
         LOCK_GUARD(mtx_send_buffer_sending_);
+        /**
+         * 注意：
+         *      1）send_buffer_sending_中可能存在数据
+         *          因为flushData存在多线程访问情况，当其中一个线程调用flushData，
+         *          将一级缓存转为二级缓存并且发送失败时会产生数据
+         *      2）flushData存在多线程访问情况，可能会导致数据发送乱序？
+         *          由于每次发送时，都是加锁获取有序列表，然后在发送，此时发送时有序的，但是遇到其他线程调用flushData时，
+         *          可能导致两个有序发送队列，变成无序。
+         * 
+         *          并不会出现多线程flushData情况：
+         *              EventPoller触发的前提是，注册了写事件。
+         *                  1）初始化时，默认注册了写事件，此时sendable_为true
+         *                  2）缓存清空后，取消写事件,此时sendable_为true
+         *                  3）发送失败，重新注册写事件，此时sendable_为flase
+         *              关于情况1）：
+         *                  初始化bindUdpSocket之前，调用send添加一级缓存，此时既有写事件，sendable_又是true（默认情况下）
+         *                  这种情况可能存在多线程访问flushData。
+         *                  但是zltoolkit，bindUdpSocket时，会情况之前添加的一级缓存，因此
+         *                 
+         *                      
+         *      3）将未发送成功的数据放入send_buffer_sending_中时，需要保证顺序吗？如果需要，如何实现？
+         *          ZLToolKit的实现： 将tmp数据放在队列前面:
+         *              send_buffer_sending_.swap(send_buffer_sending_tmp);
+         *              send_buffer_sending_.append(send_buffer_sending_tmp);
+         *      
+        */
+
         send_buffer_sending_.swap(send_buffer_sending_tmp);
         /**
          * 二级缓存数据，没有发送完成。直接返回成功
@@ -252,6 +280,31 @@ int Socket::fromSockFd(int fd, SockNum::Type type) {
     return 0;
 }
 
+
+void Socket::startWritableEvent(int fd) {
+    //注册写事件时，禁用sendable_（禁止用户flushData操作）
+    sendable_ = false;
+    
+    /**
+     * 访问sock_fd了 是否需要加锁
+     *      避免加锁，fd传递参数进来
+    */
+    //LOCK_GUARD(mtx_fd_);
+    //注册写事件
+    int flag = enable_recv_ ? EventPoller::Event::kEventRead : 0;
+    poller_->modifyEvent(sock_fd_->rawFd(), flag | EventPoller::Event::kEventWrite | EventPoller::Event::kEventError);
+}
+void Socket::stopWritableEvent(int fd) {
+    /**
+     * 取消读事件，启用sendable_(用户调用flushData，触发写socket)
+    */
+    sendable_ = true;
+
+    //LOCK_GUARD(mtx_fd_);
+    int flag = enable_recv_ ? EventPoller::Event::kEventRead : 0;
+    poller_->modifyEvent(sock_fd_->rawFd(), flag | EventPoller::Event::kEventError);
+}
+
 Socket::Socket(EventPoller::Ptr poller) {
     if (poller == nullptr) {
         poller = EventPollerPool::instance().getEventPoller();
@@ -260,12 +313,6 @@ Socket::Socket(EventPoller::Ptr poller) {
 }
 
 int Socket::attachEvent(int fd, int type) {
-    if (sock_fd_ == nullptr || sock_fd_->getSockNum() == nullptr) {
-        WarnL << "sock_fd_ is nullptr";
-        return -1;
-    }
-
-
     int ret = -1;
     std::weak_ptr<Socket> self = shared_from_this();
     if (type == SockNum::kTypeTcpServer) {
@@ -317,6 +364,10 @@ void Socket::setSocketFD(SockFD::Ptr sockFd) {
 }
 
 void Socket::closeSocket() {
+    //默认情况sendable_为false，因为会注册写事事件
+    sendable_ = false;
+    enable_recv_ = true;
+
     {
         LOCK_GUARD(mtx_fd_);
         sock_fd_ = nullptr;
@@ -328,7 +379,74 @@ void Socket::onAcceptable() {
 }
 
 void Socket::onReadable(int fd, int type) {
+    /**
+     * Socket收到可读事件
+    */
+   //assert();
+   
+    /**
+     * 因为读事件是在EventPoller线程中串行发生的，所以对于同一个EventPoller
+     * 下的所有Socket，都可以使用同一个Buffer来读取数据，并回调给上层
+     * 注意：上层用户处理时，如果异步处理，则需要拷贝Buffer(因为buffer需要给下一个Socket读使用)
+    */
+    int nread = 0;
+    auto buffer = poller_->getSharedBuffer();
 
+    struct sockaddr_storage addr; socklen_t len;
+    while(enable_recv_) {
+        /**
+         * 异步Socket接受数据时，出错原因时UV_INTR时，
+         * 需要重新调用接口接收数据
+        */
+        do {
+            nread = ::recvfrom(fd, buffer->data(), buffer->size() - 1, 0, (struct sockaddr *)&addr, &len);
+        } while (-1 == nread && UV_EINTR == get_uv_error());
+
+        if (nread == 0) {
+            if (type == SockNum::kTypeTcp) {
+                //tcp连接读到eof，需要处理出错
+                //emitError()
+            }
+            else {
+                //udp socket时，打印错误即可，不需要抛出异常
+                WarnL << "Recv eof on udp socket";
+            }
+            //eof error
+            return;
+        }
+
+        if (nread == -1) {
+            int err = get_uv_error();
+            if (UV_EAGAIN == err) {
+                //异步I/o数据未准备好, 直接返回
+                return;
+            }
+
+            //其他类型出错
+            if (SockNum::kTypeTcp == type) {
+                //tcp触发异常
+                //emitError();
+            }
+            else {
+                WarnL << "Recv err on udp socket: " << get_uv_errmsg();
+            }
+            return;
+        }
+
+        //接收成功
+        *(buffer->data() + nread) = '\0';
+        buffer->setSize(nread);
+
+        LOCK_GUARD(mtx_event_);
+        try {
+            on_read_(buffer, (struct sockaddr *)&addr, len);
+        }
+        catch(std::exception &e) {
+            WarnL << "Exception occurred when emit on_read " << e.what();
+        }
+        //继续接收
+    }
+   
 }
 
 void Socket::onWritable(int fd, int type) {
@@ -336,6 +454,10 @@ void Socket::onWritable(int fd, int type) {
 }
 
 void Socket::emitError(const SocketException& exception) noexcept {
+
+}
+
+void Socket::onFlushed() {
 
 }
 

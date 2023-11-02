@@ -86,7 +86,8 @@ private:
 };//class SockFD
 
 class SocketException : public std::exception {
-
+public:
+    SocketException(int err, std::string &&);
 };//class SocketException
 
 /**
@@ -115,16 +116,12 @@ public:
     */
     int bindUdpSocket(uint16_t port, const std::string &ip = "::", bool reuseAddr = true);
 
+    /**
+     * send族函数，处理发送各种类型的buffer，数据最后统一封装成Buffer::Ptr 
+     * @tryFlush  Buffer::Ptr会被放在缓冲区，调用tryFlush会立即写入socket
+    */
     int send(std::string &&bufer, struct sockaddr *addr = nullptr, socklen_t len = 0, bool tryFlush = true);
     int send(const char *buffer, size_t size = 0, struct sockaddr *addr = nullptr, socklen_t len = 0, bool tryFlush = true);
-
-    /**
-     * 发送数据
-     * @param buffer
-     * @param addr 可选参数，发送udp消息时，指定发送地址
-     * @param len  可选参数
-     * @param tryFlush 立即发送
-    */
     int send(Buffer::Ptr buffer, struct sockaddr *addr = nullptr, socklen_t len = 0, bool tryFlush = true);
 private:
     /**
@@ -176,8 +173,8 @@ private:
      *                    这个时候需要可写事件，触发flushData，从而将缓冲数据写入socket
      *       
     */
-    void startWritableEvent();
-    void stopWritableEvent();
+    void startWritableEvent(int fd);
+    void stopWritableEvent(int fd);
 private:
     explicit Socket(EventPoller::Ptr poller = nullptr);
     //explicit Socket(int fd, int type, EventPoller::Ptr poller = nullptr);
@@ -188,6 +185,13 @@ private:
     void closeSocket();
 
     void onAcceptable();
+    /**
+     * 收到socket的读事件
+     * 如何接收数据？
+     *      1）Socket属于某个EventPoller，读事件发生时，串行触发onReadable
+     *         因此接收数据时，可以使用同一个Buffer接收数据
+     *      2) 循环调用recvfrom，知道EOF或者EAGIN
+    */
     void onReadable(int fd, int type);
     void onWritable(int fd, int type);
     //void emitError();
@@ -202,13 +206,14 @@ private:
 private:
     EventPoller::Ptr poller_;
 
+    OnRead on_read_;
+    MutexWrapper<std::recursive_mutex> mtx_event_;
     /**
      * 使用recursive_mutex而不是mutex
      * 
     */
     MutexWrapper<std::recursive_mutex> mtx_fd_;
     SockFD::Ptr sock_fd_;
-    OnRead on_read_;
 
     /**
      * Udp发送目标地址
@@ -216,9 +221,23 @@ private:
     std::shared_ptr<struct sockaddr_storage> udp_send_dst_;
 
     /**
-     * socket是否可写, 例如socket写缓冲满了就不可写了
+     * 接收数据，用来判断是否注册读事件
     */
-    std::atomic<bool> sendable_{true};
+    std::atomic<bool> enable_recv_{true};
+
+    /**
+     * socket是否可写, 例如socket写缓冲满了就不可写了
+     * 此标志用于控制用户是否需要flush， 当存在写事件时，不需要用户调用flush
+     * 
+     *     注册写事件后，sendable_不可写
+     * 
+     *     默认情况注册了写事件，因此此时sendable_应该为false
+     *     (避免写事件回调，和用户调用send，同时触发flushData)
+     * 
+     *      stopWritableEvent时，设置sendable_为true
+     *      startWritableEvent时，设置sendable_为false    
+     * */
+    std::atomic<bool> sendable_{false};
     /**
      * 发送buffer缓存, 用户想要发送的Buffer，首先被放置在这个缓存中，这个缓存成为一级缓存
      * 注意：如果是udp的时，Buffer会被封装成BufferSock，然后放入此缓存中
